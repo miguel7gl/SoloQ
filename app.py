@@ -111,7 +111,7 @@ class PlayerRank:
     def display_rank(self) -> str:
         if self.tier is None:
             return "Sin clasificar"
-        #emoji = RANK_EMOJI.get(self.tier, "")
+        # emoji = RANK_EMOJI.get(self.tier, "")
         label = RANK_ES.get(self.tier, self.tier.capitalize())
         if self.tier in ("MASTER", "GRANDMASTER", "CHALLENGER"):
             # return f"{emoji} {label} · {self.lp} LP"
@@ -138,17 +138,21 @@ UNRANKED_DESC_RE = re.compile(r"is (?:currently )?unranked", re.IGNORECASE)
 
 
 @st.cache_data(ttl=60 * REFRESH_MINUTES, show_spinner=False)
-def fetch_player_rank(player_slug: str) -> PlayerRank:
+def _fetch_player_rank_data(player_slug: str) -> dict:
+    """Hace la petición HTTP y el parseo. Devuelve solo tipos primitivos
+    (dict) porque st.cache_data necesita poder serializar el valor
+    devuelto, y algunos entornos (p. ej. Streamlit Cloud) fallan al
+    intentarlo con instancias de dataclass."""
     url = f"https://op.gg/lol/summoners/{REGION}/{quote(player_slug)}"
     try:
         resp = requests.get(url, headers=HEADERS, timeout=15)
     except requests.RequestException as exc:
-        return PlayerRank(player_slug, None, None, 0, 0, 0, error=f"Error de red: {exc}")
+        return {"error": f"Error de red: {exc}"}
 
     if resp.status_code == 404:
-        return PlayerRank(player_slug, None, None, 0, 0, 0, error="Jugador no encontrado")
+        return {"error": "Jugador no encontrado"}
     if resp.status_code != 200:
-        return PlayerRank(player_slug, None, None, 0, 0, 0, error=f"HTTP {resp.status_code}")
+        return {"error": f"HTTP {resp.status_code}"}
 
     text = resp.text
 
@@ -160,19 +164,18 @@ def fetch_player_rank(player_slug: str) -> PlayerRank:
     match = RANKED_DESC_RE.search(text)
     if match:
         tier, division, lp, wins, losses = match.groups()
-        return PlayerRank(
-            player_slug=player_slug,
-            tier=tier.upper(),
-            division=division,
-            lp=int(lp),
-            wins=int(wins),
-            losses=int(losses),
-        )
+        return {
+            "tier": tier.upper(),
+            "division": division,
+            "lp": int(lp),
+            "wins": int(wins),
+            "losses": int(losses),
+        }
 
     # Sin rango de SoloQ esta temporada
     near_ranked_text = "SOLORANKED" in text or "solo" in text.lower()
     if near_ranked_text:
-        return PlayerRank(player_slug, None, None, 0, 0, 0)
+        return {}
 
     # Ni siquiera se encuentra la sección esperada: guarda la respuesta
     # para poder diagnosticar (bloqueo, cambio de estructura, etc.)
@@ -189,9 +192,19 @@ def fetch_player_rank(player_slug: str) -> PlayerRank:
     if debug_path:
         hint += f" [guardado en {debug_path}]"
 
+    return {"error": f"No se encontraron los datos de rango{hint}"}
+
+
+def fetch_player_rank(player_slug: str) -> PlayerRank:
+    data = _fetch_player_rank_data(player_slug)
     return PlayerRank(
-        player_slug, None, None, 0, 0, 0,
-        error=f"No se encontraron los datos de rango{hint}",
+        player_slug=player_slug,
+        tier=data.get("tier"),
+        division=data.get("division"),
+        lp=data.get("lp", 0),
+        wins=data.get("wins", 0),
+        losses=data.get("losses", 0),
+        error=data.get("error"),
     )
 
 
@@ -419,10 +432,10 @@ table_html = f"""
 
 components.html(table_html, height=90 + 54 * len(ranks), scrolling=False)
 
-# st.caption(
-#     "Datos obtenidos de op.gg mediante scraping (no oficial, no afiliado a "
-#     "op.gg ni a Riot Games). Puede dejar de funcionar si op.gg cambia su web."
-# )
+st.caption(
+    "Datos obtenidos de op.gg mediante scraping (no oficial, no afiliado a "
+    "op.gg ni a Riot Games). Puede dejar de funcionar si op.gg cambia su web."
+)
 
 # ---------------------------------------------------------------------------
 # AUTO-REFRESCO NATIVO (sin dependencias externas)
