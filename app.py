@@ -35,10 +35,13 @@ PLAYERS: list[str] = [
     "GLS luihjy5-EUW",
     "Wachakuky-Wacha",
     "Calvo-Diego",
+    "T1 El Goat-Calvo",
+    "starsSergio-EUW",
     "coolest guy ever-Jeff",
     "Asterius TF-EUW",
     "Ryan Gosling-PhyX",
     "Sesu-NIER",
+    "guillespia-1111"
 ]
 
 REGION = "euw"  # euw, eune, na, lan, las, kr, br, ...
